@@ -1,4 +1,4 @@
-from util import *
+from DES.util import *
 import base64
 
 # Function to apply a permutation table to a given block
