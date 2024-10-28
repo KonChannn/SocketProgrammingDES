@@ -125,14 +125,11 @@ ip_inverse_table = [
 ]
 
 
-def pad_string(input_string):
-    # Calculate how many padding characters 
-    padding_length = 8 - (len(input_string) % 8)
-    if padding_length == 8:  # No padding needed
-        return input_string
-    # Pad the string with zeros
-    padded_string = input_string + '1' * padding_length
-    return padded_string
+def pad_string(message, block_size=8):
+    padding_length = block_size - (len(message) % block_size)
+    padding = chr(padding_length) * padding_length
+    return message + padding
+
 
 def str_to_bin(user_input):
     
@@ -174,6 +171,10 @@ def ip_on_binary_rep(binary_representation):
     ip_result_str = ''.join(ip_result)
     
     return ip_result_str
+
+def remove_padding(plaintext):
+    padding_length = ord(plaintext[-1]) 
+    return plaintext[:-padding_length]  
 
 
 

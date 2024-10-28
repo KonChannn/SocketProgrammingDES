@@ -1,34 +1,59 @@
-import socket
+import socketio
 import threading
-from DES.des import *  # Import fungsi enkripsi dan dekripsi dari implementasi DES Anda
+import json
+import base64
+from DES.des import encryption, decryption
+from DES.util import pad_string,remove_padding
 
-KEY = "12345678"  # Hardcoded DES key
+# Connect to the Socket.IO server
+sio = socketio.Client()
+ENCRYPTION_KEY = "29102842"  # DES keys should be exactly 8 bytes
 
-def receive_messages(client_socket):
-    while True:
+def listen_for_messages():
+    @sio.event
+    def message(data):
         try:
-            encrypted_data = client_socket.recv(1024)
-            if encrypted_data:
-                decrypted_text = decryption(ciphertext, KEY)
-                print(f"Client1 menerima (didekripsi): {decrypted_message}")
+            message_received = data['msg']
+            print (f"Received message: {message_received}")
+            if ':' in message_received:
+                sender, msg = message_received.split(':',1)
+                stripped_msg = msg.strip()
+                decrypted_msg = decryption(stripped_msg, ENCRYPTION_KEY)
+                print(f"Message from {sender}: {remove_padding(decrypted_msg)}")
+
         except Exception as e:
-            print(f"Error: {e}")
-            break
+            print(f"Error decrypting message: {e}")
 
-def send_messages(client_socket):
+def send_messages():
+    print("Type your messages below. Type 'exit' to leave the chat.")
     while True:
-        message = input("Client1 ketik pesan: ")
-        padded_plaintext = pad_string(message)  # Pad pesan sebelum enkripsi
-        encrypted_data = encryption(padded_plaintext, KEY)
-        print(encrypted_data)
-        client_socket.sendall(encrypted_data)
+        msg = input("> ")
+        if msg.lower() == 'exit':
+            sio.disconnect()
+            break
+        try:
+            padded_string = pad_string(msg)
+            encrypted_msg = encryption(padded_string, ENCRYPTION_KEY)
+            print(f"Encrypted message: {encrypted_msg}")
+            sio.emit('message', {'msg': encrypted_msg})
 
-def start_client1():
-    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    client_socket.connect(('localhost', 9999))
 
-    threading.Thread(target=receive_messages, args=(client_socket,)).start()
-    threading.Thread(target=send_messages, args=(client_socket,)).start()
+        except Exception as e:
+            print(f"Error encrypting message: {e}")
 
-if __name__ == "__main__":
-    start_client1()
+# Connect to the server
+@sio.event
+def connect():
+    print("Connected to the chat server!")
+    threading.Thread(target=send_messages).start()
+
+# Disconnect from the server
+@sio.event
+def disconnect():
+    print("Disconnected from the chat server.")
+
+# Connect and start listening
+if __name__ == '__main__':
+    listen_for_messages()
+    sio.connect('http://localhost:5000')
+    sio.wait()

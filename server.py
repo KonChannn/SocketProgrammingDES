@@ -1,44 +1,31 @@
-import socket
-import threading
+#imports 
+import socketio
+import eventlet
+from eventlet import wsgi
 
-def relay_messages(sender_conn, receiver_conn, sender_name):
-    while True:
-        try:
-            data = sender_conn.recv(1024)  # Menerima pesan dari pengirim
-            if not data:
-                print(f"{sender_name} terputus.")
-                break  # Jika tidak ada data, berarti client terputus
+# Create a Socket.IO server
+sio = socketio.Server()
+app = socketio.WSGIApp(sio)
 
-            print(f"{sender_name} mengirim data terenkripsi: {data.decode('utf-8')}")
-            receiver_conn.sendall(data)  # Mengirimkan data ke penerima
+# Handle new connections
+@sio.event
+def connect(sid, environ):
+    print(f'User connected: {sid}')
+    sio.emit('message', {'msg': f'User {sid} has entered the chat!'}, to=sid)
 
-        except ConnectionResetError:
-            print(f"ConnectionResetError: {sender_name} terputus secara tiba-tiba.")
-            break
-        except Exception as e:
-            print(f"Error saat relay pesan dari {sender_name}: {e}")
-            break
+# Handle messages from clients
+@sio.event
+def message(sid, data):
+    print(f'Received message from {sid}: {data["msg"]}')
+    sio.emit('message', {'msg': f'{sid}: {data["msg"]}'}, skip_sid=sid)
 
-    # Pembersihan setelah client terputus
-    sender_conn.close()
-    receiver_conn.close()
-    print(f"Koneksi {sender_name} telah ditutup.")
+# Handle client disconnections
+@sio.event
+def disconnect(sid):
+    print(f'User disconnected: {sid}')
+    sio.emit('message', {'msg': f'User {sid} has left the chat.'})
 
-def start_server():
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.bind(('localhost', 9999))
-    server_socket.listen(2)
-    print("Server siap menerima koneksi dari client1 dan client2...")
-
-    client1_conn, _ = server_socket.accept()
-    print("Client1 terhubung.")
-    
-    client2_conn, _ = server_socket.accept()
-    print("Client2 terhubung.")
-
-    # Buat thread untuk meneruskan pesan antara kedua klien
-    threading.Thread(target=relay_messages, args=(client1_conn, client2_conn, "Client1")).start()
-    threading.Thread(target=relay_messages, args=(client2_conn, client1_conn, "Client2")).start()
-
-if __name__ == "__main__":
-    start_server()
+# Run the server
+if __name__ == '__main__':
+    print("Chat server started on http://localhost:5000")
+    wsgi.server(eventlet.listen(('', 5000)), app)
