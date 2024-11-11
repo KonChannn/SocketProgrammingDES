@@ -47,13 +47,13 @@ def generate_round_keys(key):
     return round_keys
 
 # S-box substitution function
-def s_box_substitution(block):
-    output = []
-    for i in range(8):
-        row = (block[i*6] << 1) + block[i*6 + 5]
-        col = (block[i*6 + 1] << 3) + (block[i*6 + 2] << 2) + (block[i*6 + 3] << 1) + block[i*6 + 4]
-        output.extend(format(s_boxes[i][row][col], '04b'))
-    return list(map(int, output))
+# def s_box_substitution(block):
+#     output = []
+#     for i in range(8):
+#         row = (block[i*6] << 1) + block[i*6 + 5]
+#         col = (block[i*6 + 1] << 3) + (block[i*6 + 2] << 2) + (block[i*6 + 3] << 1) + block[i*6 + 4]
+#         output.extend(format(s_boxes[i][row][col], '04b'))
+#     return list(map(int, output))
 
 
 def encryption(user_input, key):
