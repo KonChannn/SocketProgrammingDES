@@ -1,7 +1,8 @@
 import socketio
 import eventlet
 from eventlet import wsgi
-from PKA.utils import *  # Assuming this contains the logic to generate server keys
+from PKA.utils import generate_key_pair, decrypt_message  # Assuming this contains the logic to generate server keys
+from DES.des import decryption  # Import your DES decryption function
 
 sio = socketio.Server()
 app = socketio.WSGIApp(sio)
@@ -10,7 +11,7 @@ app = socketio.WSGIApp(sio)
 server_public_key, server_private_key = generate_key_pair()
 
 # Store public keys for each client (by ID)
-public_keys = {}
+public_keys = {}  # This will hold the DES keys as well
 
 @sio.event
 def connect(sid, environ):
@@ -36,15 +37,18 @@ def request_key(sid, data):
 def message(sid, data):
     try:
         encrypted_message = data['msg']
-        print(f"Received encrypted message from {sid}: {encrypted_message}")
-        print(f"Server private key: {server_private_key}")
-        decrypted_message = decrypt_message(encrypted_message, server_private_key)
-        print(f"Decrypted message: {decrypted_message}")
+        des_key = public_keys.get(sid)  # Retrieve the stored DES key for this sid
+
+        if des_key is None:
+            raise ValueError("DES key not found for this client session.")
+        
+        decrypted_message = decryption(encrypted_message, des_key)
+        print(f"Decrypted message from {sid}: {decrypted_message}")
+        
         sio.emit('message', {'msg': f'{sid}: {decrypted_message}'}, skip_sid=sid)
     except Exception as e:
         print(f"Error decrypting message: {e}")
         sio.emit('message', {'msg': 'Error decrypting message!'}, to=sid)
-
 
 @sio.event
 def disconnect(sid):
@@ -56,6 +60,18 @@ def disconnect(sid):
 def get_server_public_key(sid, data):
     sio.emit('public_key', {'public_key': str(server_public_key)}, to=sid)
 
+@sio.event
+def session_key(sid, data):
+    try:
+        encrypted_key = data['key']
+        # Decrypt the DES key with the server's private key
+        decrypted_key = decrypt_message(encrypted_key, server_private_key)
+        print(f"Received and decrypted session key from {sid}: {decrypted_key}")
+
+        # Store the decrypted DES key for this sid
+        public_keys[sid] = decrypted_key
+    except Exception as e:
+        print(f"Error processing session key from {sid}: {e}")
 
 if __name__ == '__main__':
     print("Chat and PKA server started on http://localhost:5000")
