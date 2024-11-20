@@ -1,76 +1,94 @@
 import socketio
 from DES.des import encryption, decryption
 from DES.util import pad_string, remove_padding
-from PKA.utils import generate_key_pair, encrypt_message, sign_data
+from PKA.utils import generate_key_pair, encrypt_message, decrypt_message
 import secrets
+import threading
 
-sio = socketio.Client()
-ENCRYPTION_KEY = '12345678'  
+class SecureChatClient:
+    def __init__(self):
+        self.sio = socketio.Client()
+        self.public_key, self.private_key = generate_key_pair()
+        self.des_key = secrets.token_hex(8)  # Generate random DES key
+        self.server_public_key = None
+        self.chat_ready = False
+        self.setup_events()
 
-# Generate key pair
-public_key, private_key = generate_key_pair()
+    def setup_events(self):
+        @self.sio.event
+        def connect():
+            print("Connected to server!")
+            # Register our public key
+            self.sio.emit('register_key', {'public_key': str(self.public_key)})
 
-# Define the global target_public_key and target_sid
-target_public_key = None
-target_sid = None
+        @self.sio.event
+        def server_public_key(data):
+            self.server_public_key = eval(data['public_key'])
+            print("Received server public key")
+            # Encrypt DES key with server's public key and send it
+            encrypted_des_key = encrypt_message(self.des_key, self.server_public_key)
+            self.sio.emit('submit_des_key', {'encrypted_des_key': encrypted_des_key})
+            print("DES key submitted to server")
+            # Start the chat immediately after submitting DES key
+            self.chat_ready = True
+            self.start_chat()
 
-@sio.event
-def connect():
-    print("Connected to the PKA and Chat server!")
-    public_key_str = str(public_key) 
-    sio.emit('register_key', {'public_key': public_key_str})
-    
-    # Request the server's public key
-    sio.emit('get_server_public_key', {})
+        @self.sio.event
+        def receive_des_key(data):
+            encrypted_des_key = data['encrypted_des_key']
+            from_sid = data['from_sid']
+            # Decrypt DES key using our private key
+            self.des_key = decrypt_message(encrypted_des_key, self.private_key)
+            print(f"Received new DES key from user {from_sid}")
+            if not self.chat_ready:
+                self.chat_ready = True
+                self.start_chat()
 
-    # Request public key of another client (example: Client 2)
-    if target_sid:
-        sio.emit('request_key', {'target_id': target_sid})
+        @self.sio.event
+        def message(data):
+            try:
+                if ':' in data['msg']:
+                    sender, encrypted_msg = data['msg'].split(':', 1)
+                    # Only decrypt messages from others
+                    if sender.strip() != self.sio.get_sid():
+                        decrypted_msg = decryption(encrypted_msg.strip(), self.des_key)
+                        unpadded_msg = remove_padding(decrypted_msg)
+                        print(f"\n{sender}: {unpadded_msg}")
+                        print("> ", end='', flush=True)  # Reprint the prompt
+            except Exception as e:
+                print(f"Error processing message: {e}")
 
-@sio.event
-def public_key(data):
-    global target_public_key
-    # Server has sent the public key
-    target_public_key = eval(data['public_key'])
-    
-    # Encrypt and send the session key to the server
-    encrypted_session_key = encrypt_message(str(ENCRYPTION_KEY), target_public_key)
-    sio.emit('session_key', {'key': encrypted_session_key}) 
-
-    print("Session key securely sent to server. Ready to send messages.")
-    send_messages()
-
-@sio.event
-def get_server_public_key(data):
-    print(f"Received server public key: {data['public_key']}")
-    # This part is unnecessary if not sending a DES key to another client
-
-@sio.event
-def message(data):
-    try:
-        message_received = data['msg']
-        if ':' in message_received:
-            sender, msg = message_received.split(':', 1)
-            stripped_msg = msg.strip()
-            print(f"{sender}: {remove_padding(stripped_msg)}")
-    except Exception as e:
-        print(f"Error decrypting message: {e}")
-
-def send_messages():
-    print("Type your messages below. Type 'exit' to leave the chat.")
-    while True:
-        msg = input("> ")
-        if msg.lower() == 'exit':
-            sio.disconnect()
-            break
+    def send_message(self, message):
         try:
-            padded_string = pad_string(msg)
-            encrypted_msg = encryption(padded_string, ENCRYPTION_KEY)
-            print(f"Encrypted message: {encrypted_msg}")
-            sio.emit('message', {'msg': encrypted_msg})
+            padded_msg = pad_string(message)
+            encrypted_msg = encryption(padded_msg, self.des_key)
+            self.sio.emit('message', {'msg': encrypted_msg})
         except Exception as e:
-            print(f"Error encrypting message: {e}")
+            print(f"Error sending message: {e}")
+
+    def start_chat(self):
+        print("\nChat is ready! Type your messages (type 'exit' to quit):")
+        while True:
+            try:
+                message = input("> ")
+                if message.lower() == 'exit':
+                    self.sio.disconnect()
+                    break
+                self.send_message(message)
+            except KeyboardInterrupt:
+                print("\nExiting chat...")
+                self.sio.disconnect()
+                break
+            except Exception as e:
+                print(f"Error in chat: {e}")
+
+    def connect_to_server(self, server_url='http://localhost:5000'):
+        try:
+            self.sio.connect(server_url)
+            self.sio.wait()
+        except Exception as e:
+            print(f"Connection error: {e}")
 
 if __name__ == '__main__':
-    sio.connect('http://localhost:5000') 
-    sio.wait()
+    client = SecureChatClient()
+    client.connect_to_server()
