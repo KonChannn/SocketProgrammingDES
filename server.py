@@ -1,22 +1,17 @@
-
 import socketio
 import eventlet
 from eventlet import wsgi
-from PKA.utils import generate_key_pair, encrypt_message, decrypt_message
 
 sio = socketio.Server()
 app = socketio.WSGIApp(sio)
 
-# Generate the server's public/private key pair
-server_public_key, server_private_key = generate_key_pair()
-
 # Store client information
-clients = {}  # Dictionary to store client public keys and encrypted DES keys
+clients = {}  # Dictionary to store client public keys
 
 @sio.event
 def connect(sid, environ):
     print(f'User connected: {sid}')
-    clients[sid] = {'public_key': None, 'encrypted_des_key': None}
+    clients[sid] = {'public_key': None}
     sio.emit('message', {'msg': f'User {sid} has entered the chat!'})
 
 @sio.event
@@ -25,31 +20,36 @@ def register_key(sid, data):
     public_key = eval(data['public_key'])  # Convert string representation back to key
     clients[sid]['public_key'] = public_key
     print(f"Registered public key for client {sid}")
-    # Send server's public key back to client
-    sio.emit('server_public_key', {'public_key': str(server_public_key)}, to=sid)
+    
+    # If more than one client has registered, distribute keys
+    registered_clients = [
+        other_sid for other_sid, client_info in clients.items() 
+        if client_info['public_key'] is not None
+    ]
+    
+    if len(registered_clients) > 1:
+        # Distribute all public keys to all clients
+        for target_sid in registered_clients:
+            other_keys = {
+                other_sid: str(client_info['public_key']) 
+                for other_sid, client_info in clients.items() 
+                if other_sid != target_sid and client_info['public_key'] is not None
+            }
+            sio.emit('distribute_public_keys', {'public_keys': other_keys}, to=target_sid)
 
 @sio.event
-def submit_des_key(sid, data):
-    # Receive encrypted DES key from client
+def relay_encrypted_des_key(sid, data):
+    # Simply relay the encrypted DES key to the target client
+    target_sid = data['target_sid']
     encrypted_des_key = data['encrypted_des_key']
-    clients[sid]['encrypted_des_key'] = encrypted_des_key
-    
-    # Decrypt DES key using server's private key
-    des_key = decrypt_message(encrypted_des_key, server_private_key)
-    print(f"Received and decrypted DES key from client {sid}")
-    
-    # Re-encrypt DES key with each other client's public key and distribute
-    for other_sid, other_client in clients.items():
-        if other_sid != sid and other_client['public_key']:
-            encrypted_des_key_for_other = encrypt_message(des_key, other_client['public_key'])
-            sio.emit('receive_des_key', {
-                'encrypted_des_key': encrypted_des_key_for_other,
-                'from_sid': sid
-            }, to=other_sid)
+    sio.emit('receive_encrypted_des_key', {
+        'encrypted_des_key': encrypted_des_key,
+        'from_sid': sid
+    }, to=target_sid)
 
 @sio.event
 def message(sid, data):
-    # Server just relays the encrypted message without decrypting
+    # Server just relays the encrypted message
     encrypted_message = data['msg']
     sio.emit('message', {'msg': f'{sid}: {encrypted_message}'}, skip_sid=sid)
 
