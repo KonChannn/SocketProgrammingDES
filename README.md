@@ -7,5 +7,5 @@
 
 
 # Pembagian Tugas
-Steven Gerard           : Modifikasi algoritma DES agar dapat menerima string dengan panjang lebih dari 64 bit dan mencoba socket programming <br />
-Nathaniel Ryo Kurniadi  : Menggunakan SocketIO untuk socket programming, menyempurnakan algoritma DES yang telah diimplementasi, menulis readme
+Steven Gerard           : Modifikasi algoritma DES agar dapat menerima string dengan panjang lebih dari 64 bit dan mencoba socket programming,memperbaikki dan melengkapi implementasi pembagian kunci DES agar sesuai dengan skema asymetric cryptosystem <br />
+Nathaniel Ryo Kurniadi  : Menggunakan SocketIO untuk socket programming, menyempurnakan algoritma DES yang telah diimplementasi,melakukan generate public dan private key dengan RSA dan membagikkan ke client,mencoba mengimplementasi pembagian kunci DES dengan sistem asymetric, menulis readme
