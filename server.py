@@ -42,9 +42,13 @@ def relay_encrypted_des_key(sid, data):
     # Simply relay the encrypted DES key to the target client
     target_sid = data['target_sid']
     encrypted_des_key = data['encrypted_des_key']
+    signature = data['signature']
+    
+
     sio.emit('receive_encrypted_des_key', {
         'encrypted_des_key': encrypted_des_key,
-        'from_sid': sid
+        'from_sid': sid,
+        'signature': signature
     }, to=target_sid)
 
 @sio.event

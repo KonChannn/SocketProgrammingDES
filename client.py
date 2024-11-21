@@ -1,7 +1,7 @@
 import socketio
 from DES.des import encryption, decryption
 from DES.util import pad_string, remove_padding
-from PKA.utils import generate_key_pair, encrypt_message, decrypt_message
+from PKA.utils import *
 import os
 
 class SecureChatClient:
@@ -51,14 +51,28 @@ class SecureChatClient:
         def receive_encrypted_des_key(data):
             if self.des_key:
                 return  # Prevent duplicate key processing
-            
+
             encrypted_des_key = data['encrypted_des_key']
             from_sid = data['from_sid']
+            signature = data['signature']
+
+            print("list of public keys received from other clients:", self.other_clients_public_keys)
+
             try:
                 # Decrypt DES key using our private key
                 decrypted_des_key = decrypt_message(encrypted_des_key, self.private_key)
                 print(f"Received DES key from {from_sid}")
                 
+                print(type(decrypted_des_key))
+                print(type(signature))
+                print(type(self.other_clients_public_keys[from_sid]))
+                print(self.other_clients_public_keys[from_sid])
+                # Verify digital signature
+                if not verify_signature(decrypted_des_key, signature, eval(self.other_clients_public_keys[from_sid])):
+                    print("Digital signature verification failed. Exiting chat...")
+                    self.sio.disconnect()
+                    return
+
                 # Set the DES key
                 self.des_key = decrypted_des_key
                 self.chat_ready = True
@@ -88,11 +102,15 @@ class SecureChatClient:
         # Encrypt DES key with target client's public key
         public_key = eval(self.other_clients_public_keys[target_sid])
         encrypted_des_key = encrypt_message(self.des_key, public_key)
-        
+
+        # Create digital signature
+        signature = sign_data(self.des_key, self.private_key)
+
         # Send encrypted DES key to server to relay
         self.sio.emit('relay_encrypted_des_key', {
             'target_sid': target_sid,
-            'encrypted_des_key': encrypted_des_key
+            'encrypted_des_key': encrypted_des_key,
+            'signature': signature
         })
         print(f"Sent DES key to client {target_sid}")
 
